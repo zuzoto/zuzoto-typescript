@@ -1,0 +1,48 @@
+{
+  "name": "@zuzoto/sdk",
+  "version": "0.1.0",
+  "description": "The official TypeScript SDK for Zuzoto — cognitive memory infrastructure for AI agents",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "zuzoto",
+    "ai",
+    "memory",
+    "llm",
+    "agents",
+    "rag",
+    "knowledge-graph"
+  ],
+  "author": "Zuzoto",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zuzoto/zuzoto-typescript"
+  },
+  "devDependencies": {
+    "tsdown": "^0.21.7",
+    "typescript": "^5.4.0",
+    "vitest": "^3.0.0"
+  }
+}
