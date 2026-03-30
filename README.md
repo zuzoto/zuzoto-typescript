@@ -1,6 +1,6 @@
 # @zuzoto/sdk
 
-The official TypeScript SDK for [Zuzoto](https://github.com/zuzoto/zuzoto) — cognitive memory infrastructure for AI agents.
+The official TypeScript SDK for [Zuzoto](https://github.com/zuzoto/zuzoto) - cognitive memory infrastructure for AI agents.
 
 ## Install
 
@@ -44,15 +44,15 @@ console.log(`Context: ${ctx.memories.length} memories, ${ctx.facts.length} facts
 
 ## Features
 
-- **Memory CRUD** — add, batchAdd, get, update, search, getContext, forget
-- **Batch ingestion** — add up to 100 memories in one call
-- **Hybrid search** — vector, BM25, graph, temporal strategies
-- **Context assembly** — token-budgeted context windows for LLMs
-- **Knowledge graph** — entity and fact CRUD, temporal state queries
-- **Sessions** — conversation session management
-- **Temporal queries** — point-in-time and entity timeline queries
-- **Typed errors** — `ZuzotoError` with status code and message
-- **Zero dependencies** — uses native `fetch`
+- **Memory CRUD** - add, batchAdd, get, update, search, getContext, forget
+- **Batch ingestion** - add up to 100 memories in one call
+- **Hybrid search** - vector, BM25, graph, temporal strategies
+- **Context assembly** - token-budgeted context windows for LLMs
+- **Knowledge graph** - entity and fact CRUD, temporal state queries
+- **Sessions** - conversation session management
+- **Temporal queries** - point-in-time and entity timeline queries
+- **Typed errors** - `ZuzotoError` with status code and message
+- **Zero dependencies** - uses native `fetch`
 
 ## API
 
