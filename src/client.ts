@@ -70,6 +70,12 @@ export class ZuzotoClient {
     return this.patch<Memory>(`/v1/memories/${encodeURIComponent(id)}`, input);
   }
 
+  /** Delete a memory by ID. */
+  async delete(id: string, mode?: "soft" | "hard" | "gdpr"): Promise<void> {
+    const params = mode ? `?mode=${mode}` : "";
+    await this.del(`/v1/memories/${encodeURIComponent(id)}${params}`);
+  }
+
   /** Hybrid search across memories. */
   async search(query: SearchQuery): Promise<SearchResult> {
     // Map convenience user_id to scope.
@@ -282,24 +288,44 @@ export class ZuzotoClient {
   }
 }
 
-/** Error from the Zuzoto API. */
+/** Error from the Zuzoto API (RFC 7807 Problem Detail). */
 export class ZuzotoError extends Error {
   status: number;
+  /** RFC 7807 problem type URI. */
+  type?: string;
+  /** RFC 7807 short summary. */
+  title?: string;
+  /** Request ID for debugging. */
+  instance?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, opts?: { type?: string; title?: string; instance?: string }) {
     super(message);
     this.name = "ZuzotoError";
     this.status = status;
+    this.type = opts?.type;
+    this.title = opts?.title;
+    this.instance = opts?.instance;
   }
 
   static async fromResponse(resp: Response): Promise<ZuzotoError> {
     let msg: string;
+    let type: string | undefined;
+    let title: string | undefined;
+    let instance: string | undefined;
     try {
-      const body = await resp.json() as { error?: string };
-      msg = body.error ?? resp.statusText;
+      const body = await resp.json() as Record<string, unknown>;
+      // RFC 7807 ProblemDetail
+      if (body.type && typeof body.type === "string") {
+        type = body.type as string;
+        title = body.title as string | undefined;
+        instance = body.instance as string | undefined;
+        msg = (body.detail as string) ?? title ?? resp.statusText;
+      } else {
+        msg = (body.error as string) ?? resp.statusText;
+      }
     } catch {
       msg = resp.statusText;
     }
-    return new ZuzotoError(resp.status, msg);
+    return new ZuzotoError(resp.status, msg, { type, title, instance });
   }
 }

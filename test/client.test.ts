@@ -216,4 +216,58 @@ describe("ZuzotoClient", () => {
     const client = new ZuzotoClient("http://localhost:8080/", { fetch });
     await client.get("m-1");
   });
+
+  it("delete() sends DELETE with mode", async () => {
+    const fetch = mockFetch((url, init) => {
+      expect(init?.method).toBe("DELETE");
+      expect(url).toContain("/v1/memories/m-1?mode=hard");
+      return { status: 204 };
+    });
+
+    const client = new ZuzotoClient("http://localhost:8080", { fetch });
+    await expect(client.delete("m-1", "hard")).resolves.toBeUndefined();
+  });
+
+  it("RFC 7807 errors are parsed", async () => {
+    const fetch = mockFetch(() => ({
+      status: 400,
+      body: {
+        type: "https://zuzoto.dev/problems/validation-error",
+        title: "Validation Failed",
+        detail: "mode: must be one of: soft, hard, gdpr",
+        instance: "req-abc",
+      },
+    }));
+
+    const client = new ZuzotoClient("http://localhost:8080", { fetch });
+    try {
+      await client.search({ text: "test" });
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ZuzotoError);
+      const e = err as InstanceType<typeof ZuzotoError>;
+      expect(e.status).toBe(400);
+      expect(e.type).toBe("https://zuzoto.dev/problems/validation-error");
+      expect(e.instance).toBe("req-abc");
+      expect(e.message).toBe("mode: must be one of: soft, hard, gdpr");
+    }
+  });
+
+  it("batchAdd returns details on partial failure", async () => {
+    const fetch = mockFetch(() => ({
+      status: 200,
+      body: {
+        results: [],
+        total: 1,
+        errors: 1,
+        details: [{ index: 1, message: "content or messages required" }],
+      },
+    }));
+
+    const client = new ZuzotoClient("http://localhost:8080", { fetch });
+    const result = await client.batchAdd([{ content: "good" }, { content: "" }]);
+    expect(result.errors).toBe(1);
+    expect(result.details).toHaveLength(1);
+    expect(result.details![0].index).toBe(1);
+  });
 });

@@ -208,6 +208,12 @@ export interface BatchAddResult {
   results: AddResult[];
   total: number;
   errors: number;
+  details?: BatchItemError[];
+}
+
+export interface BatchItemError {
+  index: number;
+  message: string;
 }
 
 export interface EntityState {
@@ -237,6 +243,7 @@ export interface ListEntitiesOpts {
 }
 
 export interface ListFactsOpts {
+  user_id?: string;
   subject_id?: string;
   object_id?: string;
   predicate?: string;
