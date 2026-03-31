@@ -1,5 +1,5 @@
 ---
-"@zuzoto/sdk": minor
+"@zuzoto/sdk": patch
 ---
 
 Add retry/timeout support and DX tooling
