@@ -1,0 +1,11 @@
+pre-commit:
+  parallel: true
+  commands:
+    prettier:
+      glob: "*.{ts,mts,json,md}"
+      run: npx prettier --check {staged_files}
+    eslint:
+      glob: "*.{ts,mts}"
+      run: npx eslint {staged_files}
+    typecheck:
+      run: pnpm run lint

@@ -19,11 +19,17 @@
     "LICENSE"
   ],
   "scripts": {
+    "version": "changeset version && node scripts/sync-version.mjs",
     "build": "tsdown",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
+    "lint:eslint": "eslint src/ test/",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm run lint && pnpm run lint:eslint && pnpm run format:check && pnpm run test",
     "prepublishOnly": "pnpm run build",
+    "prepare": "npx lefthook install",
     "changeset": "changeset",
     "release": "changeset publish"
   },
@@ -56,8 +62,14 @@
   "packageManager": "pnpm@10.33.0",
   "devDependencies": {
     "@changesets/cli": "^2.29.0",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.5.0",
+    "eslint": "^10.1.0",
+    "lefthook": "^2.1.4",
+    "prettier": "^3.8.1",
     "tsdown": "^0.21.7",
     "typescript": "^5.4.0",
+    "typescript-eslint": "^8.58.0",
     "vitest": "^3.0.0"
   }
 }
