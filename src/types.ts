@@ -267,9 +267,26 @@ export interface ListEpisodesOpts {
 
 // ---- Client options --------------------------------------------------------
 
+export interface RetryOptions {
+  /** Maximum number of retry attempts. Default: 3. */
+  maxRetries?: number;
+  /** Initial backoff in ms. Default: 500. */
+  initialDelayMs?: number;
+  /** Maximum backoff in ms. Default: 30000. */
+  maxDelayMs?: number;
+  /** Backoff multiplier. Default: 2. */
+  multiplier?: number;
+  /** Status codes to retry on. Default: [429, 500, 502, 503, 504]. */
+  retryableStatuses?: number[];
+}
+
 export interface ZuzotoClientOptions {
   apiKey?: string;
   fetch?: typeof globalThis.fetch;
+  /** Request timeout in ms. No timeout by default. */
+  timeoutMs?: number;
+  /** Retry configuration. Pass false to disable retries. */
+  retry?: RetryOptions | false;
 }
 
 // ---- Async / job types -----------------------------------------------------

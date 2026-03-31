@@ -24,6 +24,7 @@ import type {
   ListSessionsOpts,
   Memory,
   Page,
+  RetryOptions,
   SearchQuery,
   SearchResult,
   Session,
@@ -46,10 +47,20 @@ const DEFAULT_BASE_URL = "https://api.zuzoto.ai";
  * const result = await client.add({ content: "User prefers dark mode", user_id: "user-123" });
  * ```
  */
+const DEFAULT_RETRY: Required<RetryOptions> = {
+  maxRetries: 3,
+  initialDelayMs: 500,
+  maxDelayMs: 30_000,
+  multiplier: 2,
+  retryableStatuses: [429, 500, 502, 503, 504],
+};
+
 export class ZuzotoClient {
   private baseURL: string;
   private apiKey?: string;
   private fetchFn: typeof globalThis.fetch;
+  private timeoutMs?: number;
+  private retryOpts: Required<RetryOptions> | false;
 
   constructor(options?: ZuzotoClientOptions);
   constructor(baseURL: string, options?: ZuzotoClientOptions);
@@ -68,6 +79,8 @@ export class ZuzotoClient {
     this.baseURL = baseURL.replace(/\/+$/, "");
     this.apiKey = options.apiKey;
     this.fetchFn = options.fetch ?? globalThis.fetch;
+    this.timeoutMs = options.timeoutMs;
+    this.retryOpts = options.retry === false ? false : { ...DEFAULT_RETRY, ...options.retry };
   }
 
   // ---- memories ------------------------------------------------------------
@@ -303,16 +316,80 @@ export class ZuzotoClient {
     body?: unknown,
     extraHeaders?: Record<string, string>,
   ): Promise<T> {
-    const resp = await this.fetchFn(`${this.baseURL}${path}`, {
-      method,
-      headers: this.headers(extraHeaders),
-      body: body !== undefined && body !== null ? JSON.stringify(body) : undefined,
-    });
+    const url = `${this.baseURL}${path}`;
+    const headers = this.headers(extraHeaders);
+    const serialized = body !== undefined && body !== null ? JSON.stringify(body) : undefined;
+
+    const attempt = async (signal?: AbortSignal): Promise<Response> => {
+      return this.fetchFn(url, { method, headers, body: serialized, signal });
+    };
+
+    let resp: Response;
+
+    if (this.retryOpts === false) {
+      resp = await this.withTimeout(attempt);
+    } else {
+      resp = await this.withRetry(attempt, this.retryOpts);
+    }
+
     if (!resp.ok) throw await ZuzotoError.fromResponse(resp);
     if (resp.status === 204 || resp.headers.get("content-length") === "0") {
       return undefined as T;
     }
     return resp.json() as Promise<T>;
+  }
+
+  private async withTimeout(fn: (signal?: AbortSignal) => Promise<Response>): Promise<Response> {
+    if (!this.timeoutMs) return fn();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      return await fn(controller.signal);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async withRetry(
+    fn: (signal?: AbortSignal) => Promise<Response>,
+    opts: Required<RetryOptions>,
+  ): Promise<Response> {
+    let lastError: unknown;
+    let delay = opts.initialDelayMs;
+
+    for (let i = 0; i <= opts.maxRetries; i++) {
+      try {
+        const resp = await this.withTimeout(fn);
+        if (i < opts.maxRetries && opts.retryableStatuses.includes(resp.status)) {
+          // Use Retry-After header if present, otherwise exponential backoff
+          const retryAfter = resp.headers.get("Retry-After");
+          if (retryAfter) {
+            const secs = Number(retryAfter);
+            delay = Number.isFinite(secs) ? secs * 1000 : delay;
+          }
+          await this.sleep(Math.min(delay, opts.maxDelayMs));
+          delay *= opts.multiplier;
+          continue;
+        }
+        return resp;
+      } catch (err) {
+        lastError = err;
+        // Don't retry on abort (timeout) if it's the last attempt
+        if (i >= opts.maxRetries) break;
+        // Retry on network errors (TypeError from fetch) and abort errors
+        if (err instanceof TypeError || (err instanceof DOMException && err.name === "AbortError")) {
+          await this.sleep(Math.min(delay, opts.maxDelayMs));
+          delay *= opts.multiplier;
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastError;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async post<T>(path: string, body: unknown, extraHeaders?: Record<string, string>): Promise<T> {

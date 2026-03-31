@@ -73,10 +73,12 @@ const zo = new ZuzotoClient({ apiKey: "key" });
 const zo = new ZuzotoClient("https://your-instance.example.com", { apiKey: "key" });
 ```
 
-| Option   | Type     | Description                            |
-| -------- | -------- | -------------------------------------- |
-| `apiKey` | `string` | API key for authentication             |
-| `fetch`  | `fetch`  | Custom fetch implementation (optional) |
+| Option      | Type                    | Description                                    |
+| ----------- | ----------------------- | ---------------------------------------------- |
+| `apiKey`    | `string`                | API key for authentication                     |
+| `fetch`     | `fetch`                 | Custom fetch implementation (optional)         |
+| `timeoutMs` | `number`                | Request timeout in milliseconds (optional)     |
+| `retry`     | `RetryOptions \| false` | Retry config, or `false` to disable (optional) |
 
 ### Memory
 
@@ -163,6 +165,29 @@ zo.health(): Promise<HealthStatus>
 zo.ready(): Promise<HealthStatus>
 zo.version(): Promise<VersionInfo>
 ```
+
+## Retry & Timeout
+
+The client retries on 429 and 5xx errors with exponential backoff by default. Configure or disable:
+
+```typescript
+// Custom retry + timeout
+const zo = new ZuzotoClient({
+  apiKey: "key",
+  timeoutMs: 10_000,
+  retry: {
+    maxRetries: 5,
+    initialDelayMs: 200,
+    maxDelayMs: 60_000,
+    multiplier: 2,
+  },
+});
+
+// Disable retries
+const zo = new ZuzotoClient({ apiKey: "key", retry: false });
+```
+
+The client respects `Retry-After` headers from the server when present.
 
 ## Error Handling
 
