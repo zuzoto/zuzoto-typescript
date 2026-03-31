@@ -271,3 +271,48 @@ export interface ZuzotoClientOptions {
   apiKey?: string;
   fetch?: typeof globalThis.fetch;
 }
+
+// ---- Async / job types -----------------------------------------------------
+
+export interface AsyncAddResult {
+  job_id: string;
+  status: string;
+  item_count?: number;
+}
+
+export interface Job {
+  job_id: string;
+  job_type: string;
+  status: string;
+  result?: Record<string, unknown>;
+  error?: string;
+  item_count: number;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string | null;
+}
+
+// ---- Temporal query types --------------------------------------------------
+
+export interface TemporalQueryInput {
+  query: string;
+  user_id?: string;
+}
+
+export interface TemporalAnswer {
+  type: string;
+  text: string;
+  confidence: number;
+  [key: string]: unknown;
+}
+
+// ---- Version / health types ------------------------------------------------
+
+export interface VersionInfo {
+  version: string;
+}
+
+export interface HealthStatus {
+  status: string;
+  service: string;
+}
