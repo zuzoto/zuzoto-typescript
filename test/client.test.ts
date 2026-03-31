@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { ZuzotoClient, ZuzotoError, VERSION } from "../src/index.js";
 
-function mockFetch(handler: (url: string, init?: RequestInit) => { status: number; body?: unknown; headers?: Record<string, string> }) {
+function mockFetch(
+  handler: (url: string, init?: RequestInit) => { status: number; body?: unknown; headers?: Record<string, string> },
+) {
   return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const u = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
     const { status, body, headers: extraHeaders } = handler(u, init);
@@ -68,7 +70,13 @@ describe("ZuzotoClient", () => {
       expect(headers["Authorization"]).toBe("Bearer test-key");
       return {
         status: 201,
-        body: { memories: [{ id: "m-1", content: "hello world" }], entities_created: 1, facts_created: 2, facts_invalidated: 0, processing_ms: 42 },
+        body: {
+          memories: [{ id: "m-1", content: "hello world" }],
+          entities_created: 1,
+          facts_created: 2,
+          facts_invalidated: 0,
+          processing_ms: 42,
+        },
       };
     });
 
@@ -210,7 +218,14 @@ describe("ZuzotoClient", () => {
       expect(init?.method).toBe("GET");
       return {
         status: 200,
-        body: { job_id: "j-1", job_type: "memory.add", status: "completed", item_count: 1, created_at: "2025-01-01T00:00:00Z", updated_at: "2025-01-01T00:00:01Z" },
+        body: {
+          job_id: "j-1",
+          job_type: "memory.add",
+          status: "completed",
+          item_count: 1,
+          created_at: "2025-01-01T00:00:00Z",
+          updated_at: "2025-01-01T00:00:01Z",
+        },
       };
     });
 
@@ -293,10 +308,14 @@ describe("ZuzotoClient", () => {
     const fetch = mockFetch(() => {
       callIndex++;
       switch (callIndex) {
-        case 1: return { status: 201, body: { id: "s-1", user_id: "u1", status: "active" } };
-        case 2: return { status: 200, body: { id: "s-1", status: "active" } };
-        case 3: return { status: 204 };
-        default: throw new Error(`unexpected call ${callIndex}`);
+        case 1:
+          return { status: 201, body: { id: "s-1", user_id: "u1", status: "active" } };
+        case 2:
+          return { status: 200, body: { id: "s-1", status: "active" } };
+        case 3:
+          return { status: 204 };
+        default:
+          throw new Error(`unexpected call ${callIndex}`);
       }
     });
 

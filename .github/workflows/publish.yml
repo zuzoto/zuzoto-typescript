@@ -12,9 +12,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write      # to create release commits
-      pull-requests: write  # to create changesets PR
-      id-token: write       # OIDC token for npm trusted publishers
+      contents: write # to create release commits
+      pull-requests: write # to create changesets PR
+      id-token: write # OIDC token for npm trusted publishers
     steps:
       - uses: actions/checkout@v6
 

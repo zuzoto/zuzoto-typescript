@@ -260,7 +260,10 @@ export class ZuzotoClient {
   /** List episodes in a session. */
   async listSessionEpisodes(sessionId: string, opts?: ListEpisodesOpts): Promise<Page<Episode>> {
     const params = this.toParams(opts);
-    return this.request<Page<Episode>>("GET", `/v1/sessions/${encodeURIComponent(sessionId)}/episodes${params ? `?${params}` : ""}`);
+    return this.request<Page<Episode>>(
+      "GET",
+      `/v1/sessions/${encodeURIComponent(sessionId)}/episodes${params ? `?${params}` : ""}`,
+    );
   }
 
   // ---- health / version ----------------------------------------------------
@@ -294,7 +297,12 @@ export class ZuzotoClient {
     return h;
   }
 
-  private async request<T>(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    extraHeaders?: Record<string, string>,
+  ): Promise<T> {
     const resp = await this.fetchFn(`${this.baseURL}${path}`, {
       method,
       headers: this.headers(extraHeaders),
@@ -348,7 +356,7 @@ export class ZuzotoError extends Error {
     let title: string | undefined;
     let instance: string | undefined;
     try {
-      const body = await resp.json() as Record<string, unknown>;
+      const body = (await resp.json()) as Record<string, unknown>;
       if (body.type && typeof body.type === "string") {
         type = body.type as string;
         title = body.title as string | undefined;
