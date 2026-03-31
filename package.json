@@ -19,6 +19,7 @@
     "LICENSE"
   ],
   "scripts": {
+    "version": "changeset version && node scripts/sync-version.mjs",
     "build": "tsdown",
     "test": "vitest run",
     "test:watch": "vitest",
