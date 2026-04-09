@@ -1,6 +1,6 @@
 {
   "name": "@zuzoto/sdk",
-  "version": "0.1.0",
+  "version": "0.0.3",
   "description": "The official TypeScript SDK for Zuzoto - cognitive memory infrastructure for AI agents",
   "type": "module",
   "main": "./dist/index.cjs",
