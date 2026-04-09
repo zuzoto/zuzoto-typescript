@@ -924,4 +924,204 @@ describe("timeout", () => {
     expect(mem.id).toBe("m-1");
     expect(fetch).toHaveBeenCalledTimes(2);
   });
+
+  // ---- datasets ------------------------------------------------------------
+
+  describe("datasets", () => {
+    it("create() POSTs to /v1/datasets", async () => {
+      const fetch = mockFetch((url, init) => {
+        expect(url).toBe("http://localhost:8080/v1/datasets");
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(init?.body as string)).toEqual({
+          name: "products",
+          config: { embed_fields: ["title"], filter_fields: ["price"] },
+          enrichment_preset: "ecommerce_clothes",
+        });
+        return {
+          status: 201,
+          body: {
+            id: "ds_1",
+            org_id: "org_1",
+            name: "products",
+            config: { embed_fields: ["title"], filter_fields: ["price"] },
+            created_at: "2026-04-10T00:00:00Z",
+            updated_at: "2026-04-10T00:00:00Z",
+          },
+        };
+      });
+      const zo = new ZuzotoClient("http://localhost:8080", { apiKey: "k", fetch, ...noRetry });
+      const ds = await zo.datasets.create({
+        name: "products",
+        config: { embed_fields: ["title"], filter_fields: ["price"] },
+        enrichment_preset: "ecommerce_clothes",
+      });
+      expect(ds.id).toBe("ds_1");
+      expect(ds.name).toBe("products");
+    });
+
+    it("list() GETs /v1/datasets", async () => {
+      const fetch = mockFetch((url, init) => {
+        expect(url).toBe("http://localhost:8080/v1/datasets");
+        expect(init?.method).toBe("GET");
+        return { status: 200, body: { datasets: [], total: 0 } };
+      });
+      const zo = new ZuzotoClient("http://localhost:8080", { fetch, ...noRetry });
+      const r = await zo.datasets.list();
+      expect(r.total).toBe(0);
+    });
+
+    it("listPresets() GETs /v1/datasets/presets", async () => {
+      const fetch = mockFetch((url) => {
+        expect(url).toBe("http://localhost:8080/v1/datasets/presets");
+        return {
+          status: 200,
+          body: { presets: [{ name: "ecommerce_clothes", description: "..." }], total: 1 },
+        };
+      });
+      const zo = new ZuzotoClient("http://localhost:8080", { fetch, ...noRetry });
+      const r = await zo.datasets.listPresets();
+      expect(r.presets[0].name).toBe("ecommerce_clothes");
+    });
+
+    it("get() and delete() target /v1/datasets/:id with URL-encoded id", async () => {
+      const fetch = mockFetchSequence([
+        (url, init) => {
+          expect(url).toBe("http://localhost:8080/v1/datasets/ds%2F1");
+          expect(init?.method).toBe("GET");
+          return {
+            status: 200,
+            body: {
+              id: "ds/1",
+              org_id: "o",
+              name: "n",
+              config: { embed_fields: [], filter_fields: [] },
+              created_at: "x",
+              updated_at: "x",
+            },
+          };
+        },
+        (url, init) => {
+          expect(url).toBe("http://localhost:8080/v1/datasets/ds%2F1");
+          expect(init?.method).toBe("DELETE");
+          return { status: 204 };
+        },
+      ]);
+      const zo = new ZuzotoClient("http://localhost:8080", { fetch, ...noRetry });
+      await zo.datasets.get("ds/1");
+      await zo.datasets.delete("ds/1");
+    });
+
+    it("upsert() POSTs single doc to /documents", async () => {
+      const fetch = mockFetch((url, init) => {
+        expect(url).toBe("http://localhost:8080/v1/datasets/ds_1/documents");
+        expect(JSON.parse(init?.body as string)).toEqual({
+          external_id: "sku-1",
+          data: { title: "T-shirt" },
+        });
+        return { status: 201, body: { ids: ["doc_1"], upserted: 1 } };
+      });
+      const zo = new ZuzotoClient("http://localhost:8080", { fetch, ...noRetry });
+      const r = await zo.datasets.upsert("ds_1", { external_id: "sku-1", data: { title: "T-shirt" } });
+      expect(r.upserted).toBe(1);
+    });
+
+    it("upsertBatch() POSTs documents to /documents/batch", async () => {
+      const fetch = mockFetch((url, init) => {
+        expect(url).toBe("http://localhost:8080/v1/datasets/ds_1/documents/batch");
+        const body = JSON.parse(init?.body as string);
+        expect(body.documents).toHaveLength(2);
+        expect(body.documents[0].data.title).toBe("a");
+        return { status: 201, body: { ids: ["d1", "d2"], upserted: 2 } };
+      });
+      const zo = new ZuzotoClient("http://localhost:8080", { fetch, ...noRetry });
+      const r = await zo.datasets.upsertBatch("ds_1", [{ data: { title: "a" } }, { data: { title: "b" } }]);
+      expect(r.upserted).toBe(2);
+    });
+
+    it("getDocument() and deleteDocument() target nested URL", async () => {
+      const fetch = mockFetchSequence([
+        (url, init) => {
+          expect(url).toBe("http://localhost:8080/v1/datasets/ds_1/documents/doc_1");
+          expect(init?.method).toBe("GET");
+          return {
+            status: 200,
+            body: {
+              id: "doc_1",
+              dataset_id: "ds_1",
+              org_id: "o",
+              data: {},
+              created_at: "x",
+              updated_at: "x",
+            },
+          };
+        },
+        (url, init) => {
+          expect(url).toBe("http://localhost:8080/v1/datasets/ds_1/documents/doc_1");
+          expect(init?.method).toBe("DELETE");
+          return { status: 204 };
+        },
+      ]);
+      const zo = new ZuzotoClient("http://localhost:8080", { fetch, ...noRetry });
+      const d = await zo.datasets.getDocument("ds_1", "doc_1");
+      expect(d.id).toBe("doc_1");
+      await zo.datasets.deleteDocument("ds_1", "doc_1");
+    });
+
+    it("search() POSTs query body to /search and returns hits", async () => {
+      const fetch = mockFetch((url, init) => {
+        expect(url).toBe("http://localhost:8080/v1/datasets/ds_1/search");
+        const body = JSON.parse(init?.body as string);
+        expect(body.query).toBe("navy jumpsuit");
+        expect(body.filter).toEqual({ priceUSD: { lte: 5000 } });
+        expect(body.limit).toBe(5);
+        return {
+          status: 200,
+          body: {
+            hits: [
+              {
+                document: {
+                  id: "d1",
+                  dataset_id: "ds_1",
+                  org_id: "o",
+                  data: { name: "Navy Jumpsuit" },
+                  created_at: "x",
+                  updated_at: "x",
+                },
+                score: 0.92,
+              },
+            ],
+            total: 1,
+            confidence: 0.92,
+            guidance: "high_confidence",
+          },
+        };
+      });
+      const zo = new ZuzotoClient("http://localhost:8080", { fetch, ...noRetry });
+      const r = await zo.datasets.search("ds_1", {
+        query: "navy jumpsuit",
+        filter: { priceUSD: { lte: 5000 } },
+        limit: 5,
+      });
+      expect(r.guidance).toBe("high_confidence");
+      expect(r.hits[0].document.data.name).toBe("Navy Jumpsuit");
+    });
+
+    it("datasets accessor returns the same instance across calls", () => {
+      const zo = new ZuzotoClient("http://localhost:8080", { ...noRetry });
+      expect(zo.datasets).toBe(zo.datasets);
+    });
+
+    it("propagates 4xx as ZuzotoError", async () => {
+      const fetch = mockFetch(() => ({
+        status: 400,
+        body: {
+          type: "https://zuzoto.ai/problems/validation-error",
+          title: "Bad Request",
+          detail: "query is required",
+        },
+      }));
+      const zo = new ZuzotoClient("http://localhost:8080", { fetch, ...noRetry });
+      await expect(zo.datasets.search("ds_1", { query: "" })).rejects.toBeInstanceOf(ZuzotoError);
+    });
+  });
 });
