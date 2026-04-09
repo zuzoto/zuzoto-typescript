@@ -333,3 +333,175 @@ export interface HealthStatus {
   status: string;
   service: string;
 }
+
+// ---- Datasets --------------------------------------------------------------
+
+/**
+ * Per-dataset ingestion + search configuration. Declares which JSON fields
+ * of ingested documents are concatenated into the embedding text and which
+ * are projected into the filterable metadata column.
+ */
+export interface DatasetConfig {
+  /**
+   * Ordered list of JSON field names concatenated (with ". ") to form the
+   * text that gets embedded. Ordering matters for quality — put the
+   * strongest signal (e.g. "title") first. List a field twice to upweight it.
+   */
+  embed_fields: string[];
+  /**
+   * JSON field names projected into the filterable metadata column. Only
+   * fields declared here can be referenced in search filters.
+   */
+  filter_fields: string[];
+}
+
+/** A tenant-scoped namespace of structured documents. */
+export interface Dataset {
+  id: string;
+  org_id: string;
+  project_id?: string;
+  name: string;
+  description?: string;
+  config: DatasetConfig;
+  /**
+   * Natural-language instruction shown to the enrichment LLM for every
+   * document ingested into this dataset. Populated server-side when the
+   * dataset was created with a preset.
+   */
+  enrichment_prompt?: string;
+  /**
+   * JSON Schema describing the fields the enrichment LLM should produce.
+   * Populated server-side from the chosen preset.
+   */
+  enrichment_schema?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateDatasetInput {
+  /** Unique (per project) dataset name. */
+  name: string;
+  description?: string;
+  project_id?: string;
+  config: DatasetConfig;
+  /**
+   * Optional preset name selecting a curated (prompt, schema) pair for
+   * LLM enrichment. Call `client.datasets.listPresets()` for available
+   * values. The public API does not accept raw JSON schemas — presets only.
+   */
+  enrichment_preset?: string;
+}
+
+export interface DatasetPreset {
+  name: string;
+  description: string;
+}
+
+export interface ListDatasetPresetsResult {
+  presets: DatasetPreset[];
+  total: number;
+}
+
+export interface ListDatasetsResult {
+  datasets: Dataset[];
+  total: number;
+}
+
+/**
+ * A caller-supplied document prior to composition + embedding. When
+ * `external_id` is provided upserts are idempotent on `(dataset_id,
+ * external_id)`.
+ */
+export interface DatasetInputDocument {
+  external_id?: string;
+  data: Record<string, unknown>;
+}
+
+/** A single JSON record stored in a dataset. */
+export interface DatasetDocument {
+  id: string;
+  dataset_id: string;
+  org_id: string;
+  external_id?: string;
+  /** Raw caller-supplied JSON, round-tripped unchanged. */
+  data: Record<string, unknown>;
+  /** Composed text fed to the embedder (includes enriched fields). */
+  embed_text?: string;
+  /**
+   * Filterable projection of `filter_fields` plus any LLM-enriched
+   * fields. This is the column metadata filters evaluate against.
+   */
+  metadata?: Record<string, unknown>;
+  /**
+   * LLM-derived fields produced by the dataset's enrichment contract.
+   * Empty when enrichment is disabled or the enrichment call failed
+   * (failures are logged and non-fatal server-side).
+   */
+  enriched?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpsertDatasetResult {
+  ids: string[];
+  upserted: number;
+}
+
+/** Operator object form of a dataset filter value. Set exactly one field. */
+export interface DatasetFilterOp {
+  eq?: unknown;
+  neq?: unknown;
+  gt?: unknown;
+  gte?: unknown;
+  lt?: unknown;
+  lte?: unknown;
+  in?: unknown[];
+}
+
+/**
+ * One filter value. A scalar performs an equality match; a `DatasetFilterOp`
+ * performs a range or set comparison.
+ */
+export type DatasetFilterValue = string | number | boolean | DatasetFilterOp;
+
+/**
+ * Metadata filter grammar for `client.datasets.search()`. Keys MUST be
+ * declared in the dataset's `filter_fields` (or produced by its enrichment
+ * contract). Unknown keys are rejected as 400.
+ */
+export type DatasetFilter = Record<string, DatasetFilterValue>;
+
+export interface DatasetSearchQuery {
+  /**
+   * Natural-language query. Embedded for vector search and passed through
+   * `websearch_to_tsquery` for BM25.
+   */
+  query: string;
+  filter?: DatasetFilter;
+  /** Number of final results to return. Default 10. */
+  limit?: number;
+  /** Per-strategy top-K before Reciprocal Rank Fusion. Default 50. */
+  candidate_limit?: number;
+}
+
+export interface DatasetSearchHit {
+  document: DatasetDocument;
+  score: number;
+}
+
+export interface DatasetSearchResult {
+  hits: DatasetSearchHit[];
+  total: number;
+  /** Confidence in the top result, [0, 1]. */
+  confidence: number;
+  /** Cheap confidence signal for downstream LLMs. */
+  guidance: "high_confidence" | "low_confidence" | "no_match";
+  /**
+   * True when at least one retrieval strategy (vector or BM25) failed or
+   * returned no candidates while the other still produced results. Treat
+   * the response as partial.
+   */
+  degraded?: boolean;
+  /** Human-readable notes about partial failures or dropped filter clauses. */
+  warnings?: string[];
+}

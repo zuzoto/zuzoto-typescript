@@ -6,9 +6,15 @@ import type {
   BatchAddResult,
   ContextQuery,
   ContextWindow,
+  CreateDatasetInput,
   CreateEntityInput,
   CreateFactInput,
   CreateSessionInput,
+  Dataset,
+  DatasetDocument,
+  DatasetInputDocument,
+  DatasetSearchQuery,
+  DatasetSearchResult,
   Entity,
   EntityState,
   EntityTimeline,
@@ -18,6 +24,8 @@ import type {
   HealthStatus,
   InvalidateFactInput,
   Job,
+  ListDatasetPresetsResult,
+  ListDatasetsResult,
   ListEntitiesOpts,
   ListEpisodesOpts,
   ListFactsOpts,
@@ -32,6 +40,7 @@ import type {
   TemporalQueryInput,
   UpdateEntityInput,
   UpdateMemoryInput,
+  UpsertDatasetResult,
   VersionInfo,
   ZuzotoClientOptions,
 } from "./types.js";
@@ -61,6 +70,7 @@ export class ZuzotoClient {
   private fetchFn: typeof globalThis.fetch;
   private timeoutMs?: number;
   private retryOpts: Required<RetryOptions> | false;
+  private _datasets?: DatasetsResource;
 
   constructor(options?: ZuzotoClientOptions);
   constructor(baseURL: string, options?: ZuzotoClientOptions);
@@ -163,6 +173,31 @@ export class ZuzotoClient {
   /** Ask a temporal question (e.g. "When did X change?"). */
   async queryTemporal(input: TemporalQueryInput): Promise<TemporalAnswer> {
     return this.post<TemporalAnswer>("/v1/memories/temporal", input);
+  }
+
+  // ---- datasets ------------------------------------------------------------
+
+  /**
+   * Datasets — schemaless structured records with hybrid semantic + keyword
+   * search. A parallel subsystem to memories: no LLM extraction, no facts,
+   * no episodes — pure ingest → embed → store → search.
+   *
+   * @example
+   * ```ts
+   * const ds = await client.datasets.create({
+   *   name: "products",
+   *   config: { embed_fields: ["title", "description"], filter_fields: ["price", "in_stock"] },
+   *   enrichment_preset: "ecommerce_clothes",
+   * });
+   * await client.datasets.upsertBatch(ds.id, products.map(p => ({ external_id: p.sku, data: p })));
+   * const hits = await client.datasets.search(ds.id, { query: "navy linen jumpsuit", limit: 10 });
+   * ```
+   */
+  get datasets(): DatasetsResource {
+    if (!this._datasets) {
+      this._datasets = new DatasetsResource((method, path, body, headers) => this.request(method, path, body, headers));
+    }
+    return this._datasets;
   }
 
   // ---- jobs ----------------------------------------------------------------
@@ -446,5 +481,127 @@ export class ZuzotoError extends Error {
       msg = resp.statusText;
     }
     return new ZuzotoError(resp.status, msg, { type, title, instance });
+  }
+}
+
+/**
+ * Internal request signature shared between {@link ZuzotoClient} and
+ * resource classes that compose its private transport. Not exported.
+ */
+type RequestFn = <T>(method: string, path: string, body?: unknown, headers?: Record<string, string>) => Promise<T>;
+
+/**
+ * Datasets resource — accessed via {@link ZuzotoClient.datasets}.
+ *
+ * Datasets are tenant-scoped namespaces of schemaless JSON records with
+ * hybrid semantic + keyword search. Each dataset declares which fields
+ * get embedded and which get projected into the filterable metadata
+ * column. See `client.datasets.create()` for the full lifecycle.
+ */
+export class DatasetsResource {
+  /** @internal */
+  constructor(private rq: RequestFn) {}
+
+  // ---- dataset CRUD --------------------------------------------------------
+
+  /**
+   * Create a dataset. The `config.embed_fields` and `config.filter_fields`
+   * are locked at creation — adding a new filter field later requires
+   * recreating the dataset, so declare them up front.
+   */
+  create(input: CreateDatasetInput): Promise<Dataset> {
+    return this.rq<Dataset>("POST", "/v1/datasets", input);
+  }
+
+  /** List all datasets in the caller's organization. */
+  async list(): Promise<ListDatasetsResult> {
+    const r = await this.rq<ListDatasetsResult>("GET", "/v1/datasets");
+    // Server returns `null` instead of `[]` when empty; coerce so callers
+    // can always rely on the array shape.
+    return { datasets: r.datasets ?? [], total: r.total ?? 0 };
+  }
+
+  /** Get a dataset by ID. */
+  get(id: string): Promise<Dataset> {
+    return this.rq<Dataset>("GET", `/v1/datasets/${encodeURIComponent(id)}`);
+  }
+
+  /** Delete a dataset and all of its documents. */
+  async delete(id: string): Promise<void> {
+    await this.rq<void>("DELETE", `/v1/datasets/${encodeURIComponent(id)}`);
+  }
+
+  /**
+   * List the curated enrichment presets the server knows about. Each
+   * preset is a `(prompt, schema)` pair you can pass to `create()` via
+   * `enrichment_preset` to get LLM-derived facets on every ingested doc.
+   */
+  async listPresets(): Promise<ListDatasetPresetsResult> {
+    const r = await this.rq<ListDatasetPresetsResult>("GET", "/v1/datasets/presets");
+    return { presets: r.presets ?? [], total: r.total ?? 0 };
+  }
+
+  // ---- documents -----------------------------------------------------------
+
+  /**
+   * Upsert a single document. Provide `external_id` for idempotency on
+   * `(dataset_id, external_id)`. For more than one document, prefer
+   * {@link upsertBatch} — it costs only one embedding call per request.
+   */
+  upsert(datasetId: string, doc: DatasetInputDocument): Promise<UpsertDatasetResult> {
+    return this.rq<UpsertDatasetResult>("POST", `/v1/datasets/${encodeURIComponent(datasetId)}/documents`, doc);
+  }
+
+  /**
+   * Upsert up to 1,000 documents in a single request. The server runs one
+   * embedding call for the whole batch and one parallel enrichment pass
+   * (capped at 8 concurrent LLM calls server-side), so larger batches are
+   * dramatically cheaper than per-doc upserts.
+   *
+   * Documents with the same `external_id` as an existing record overwrite
+   * it; documents without an `external_id` always insert.
+   */
+  upsertBatch(datasetId: string, documents: DatasetInputDocument[]): Promise<UpsertDatasetResult> {
+    return this.rq<UpsertDatasetResult>("POST", `/v1/datasets/${encodeURIComponent(datasetId)}/documents/batch`, {
+      documents,
+    });
+  }
+
+  /** Get a document by ID. */
+  getDocument(datasetId: string, documentId: string): Promise<DatasetDocument> {
+    return this.rq<DatasetDocument>(
+      "GET",
+      `/v1/datasets/${encodeURIComponent(datasetId)}/documents/${encodeURIComponent(documentId)}`,
+    );
+  }
+
+  /** Delete a document by ID. */
+  async deleteDocument(datasetId: string, documentId: string): Promise<void> {
+    await this.rq<void>(
+      "DELETE",
+      `/v1/datasets/${encodeURIComponent(datasetId)}/documents/${encodeURIComponent(documentId)}`,
+    );
+  }
+
+  // ---- search --------------------------------------------------------------
+
+  /**
+   * Hybrid search across a dataset. Combines vector similarity and BM25
+   * lexical search via Reciprocal Rank Fusion. Filters reference the
+   * fields declared in `config.filter_fields` (or fields produced by the
+   * dataset's enrichment contract).
+   *
+   * The response includes a `guidance` signal (`high_confidence` /
+   * `low_confidence` / `no_match`) you can show to downstream LLMs to
+   * decide whether to ground or abstain.
+   */
+  async search(datasetId: string, query: DatasetSearchQuery): Promise<DatasetSearchResult> {
+    const r = await this.rq<DatasetSearchResult>("POST", `/v1/datasets/${encodeURIComponent(datasetId)}/search`, query);
+    // Server uses Go nil slices for empty arrays — coerce for callers.
+    return {
+      ...r,
+      hits: r.hits ?? [],
+      warnings: r.warnings ?? undefined,
+    };
   }
 }
